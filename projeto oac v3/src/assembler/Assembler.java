@@ -208,6 +208,8 @@ public class Assembler {
 				p = proccessMove(tokens);
 		}
 		return p;
+
+
 	}
 
 	/**
@@ -224,6 +226,7 @@ public class Assembler {
 			p = commands.indexOf("moveRegReg");
 		}
 		return p;
+		
 	}
 
 	/**
@@ -379,7 +382,8 @@ public class Assembler {
 	}
 
 	public static void main(String[] args) throws IOException {
-		String filename = args[0];
+		String filename;
+		filename = "program";
 		Assembler assembler = new Assembler();
 		System.out.println("Reading source assembler file: "+filename+".dsf");
 		assembler.read(filename);
