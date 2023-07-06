@@ -1,0 +1,1328 @@
+package architecture;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Scanner;
+
+
+import components.Bus;
+import components.Memory;
+import components.Register;
+import components.Ula;
+
+public class Architecture {
+	
+	private boolean simulation; //this boolean indicates if the execution is done in simulation mode.
+								//simulation mode shows the components' status after each instruction
+	
+	
+	private boolean halt;
+	private Bus extbus1;
+	private Bus intbus1;
+	private Bus intbus2;
+	private Memory memory;
+	private int memorySize;
+	private Register PC;
+	private Register IR;
+	private Register RPG;
+	private Register RPG1;
+	private Register RPG2;
+	private Register RPG3;
+	private Register Flags;
+	private Ula ula;
+	private Bus demux; //only for multiple register purposes
+	
+	private ArrayList<String> commandsList;
+	private ArrayList<Register> registersList;
+	
+	
+
+	/**
+	 * Instanciates all components in this architecture
+	 */
+	private void componentsInstances() {
+		//don't forget the instantiation order
+		//buses -> registers -> ula -> memory
+		extbus1 = new Bus();
+		intbus1 = new Bus();
+		intbus2 = new Bus();
+		PC = new Register("PC", extbus1, null);
+		IR = new Register("IR", extbus1, intbus2);
+		RPG = new Register("RPG0", extbus1, intbus1);
+		RPG1 = new Register ("RPG1", extbus1, intbus1);
+		RPG2 = new Register ("RPG2", extbus1, intbus1);
+		RPG3 = new Register ("RPG3", extbus1, intbus1);
+		Flags = new Register(2, intbus2);
+		fillRegistersList();
+		ula = new Ula(intbus1, intbus2);
+		memorySize = 128;
+		memory = new Memory(memorySize, extbus1);
+		demux = new Bus(); //this bus is used only for multiple register operations
+		
+		fillCommandsList();
+	}
+
+	/**
+	 * This method fills the registers list inserting into them all the registers we have.
+	 * IMPORTANT!
+	 * The first register to be inserted must be the default RPG
+	 */
+	private void fillRegistersList() {
+		registersList = new ArrayList<Register>();
+		registersList.add(RPG);
+		registersList.add(RPG1);
+		registersList.add(RPG2);
+		registersList.add(RPG3);
+		registersList.add(PC);
+		registersList.add(IR);
+		registersList.add(Flags);
+	}
+
+	/**
+	 * Constructor that instanciates all components according the architecture diagram
+	 */
+	public Architecture() {
+		componentsInstances();
+		
+		//by default, the execution method is never simulation mode
+		simulation = false;
+	}
+
+	
+	public Architecture(boolean sim) {
+		componentsInstances();
+		
+		//in this constructor we can set the simoualtion mode on or off
+		simulation = sim;
+	}
+
+
+
+	//getters
+	
+	protected Bus getExtbus1() {
+		return extbus1;
+	}
+
+	protected Bus getIntbus1() {
+		return intbus1;
+	}
+
+	protected Bus getIntbus2() {
+		return intbus2;
+	}
+
+	protected Memory getMemory() {
+		return memory;
+	}
+
+	protected Register getPC() {
+		return PC;
+	}
+
+	protected Register getIR() {
+		return IR;
+	}
+
+	protected Register getRPG() {
+		return RPG;
+	}
+
+	protected Register getRPG1() {
+		return RPG1;
+	}
+	
+	protected Register getRPG2() {
+		return RPG2;
+	}
+
+	protected Register getRPG3() {
+		return RPG3;
+	}
+
+	protected Register getFlags() {
+		return Flags;
+	}
+
+	protected Ula getUla() {
+		return ula;
+	}
+
+	public ArrayList<String> getCommandsList() {
+		return commandsList;
+	}
+
+
+	
+	protected void fillCommandsList() {
+		commandsList = new ArrayList<String>();
+		commandsList.add("addRegReg"); //0
+		commandsList.add("addMemReg"); //1
+		commandsList.add("addRegMem"); //2
+
+		commandsList.add("subRegReg"); //3
+		commandsList.add("subMemReg"); //4
+		commandsList.add("subRegMem"); //5
+
+		commandsList.add("imulMemReg"); //6
+		commandsList.add("imulRegMem");//7
+		commandsList.add("imulRegReg"); //8
+
+		commandsList.add("moveMemReg"); //9
+		commandsList.add("moveRegMem"); //10
+		commandsList.add("moveRegReg"); //11
+		commandsList.add("moveImmReg"); //12
+
+		commandsList.add("incReg"); //13
+		commandsList.add("incMem"); //14
+
+		commandsList.add("jmp"); //15
+		commandsList.add("jn"); //16
+		commandsList.add("jz"); //17
+		commandsList.add("jnz"); //18
+
+		commandsList.add("jeq"); //19
+		commandsList.add("jgt"); //20
+		commandsList.add("jlw"); //21
+	}
+
+	
+	/**
+	 * This method is used after some ULA operations, setting the flags bits according the result.
+	 * @param result is the result of the operation
+	 * NOT TESTED!!!!!!!
+	 */
+	private void setStatusFlags(int result) {
+		Flags.setBit(0, 0);
+		Flags.setBit(1, 0);
+		if (result==0) { //bit 0 in flags must be 1 in this case
+			Flags.setBit(0,1);
+		}
+		if (result<0) { //bit 1 in flags must be 1 in this case
+			Flags.setBit(1,1);
+		}
+	}
+
+
+	public void addRegReg(){ 
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPG A -> ula(0)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPG B -> ula(1)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(1);
+		
+		//ulaAdd -> RPG B
+		ula.add();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		ula.read(1);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void addMemReg(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//mem -> ula(0)
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(0);
+		
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> ula(1)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(1);
+
+		//ulaAdd -> Reg A
+		ula.add();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		ula.read(1);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void addRegMem(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> ula(0)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Mem -> ula(1)
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+
+		//ulaAdd -> Mem
+		ula.add();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		IR.internalStore();
+		PC.read();
+		memory.read();
+		memory.store();
+		IR.read();
+		memory.store();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	
+	public void subRegReg() {
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPG A -> ula(0)
+		memory.read();
+		demux.put(extbus1.get());
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPGB -> ula(1)
+		PC.read();
+		memory.read();
+		registersInternalRead();
+		ula.store(1);
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+		
+		//ulaAdd -> RPGB
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		ula.read(1);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void subMemReg(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Mem -> ula(0)
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Mem-Reg A -> Reg A
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.internalRead(0);
+		ula.store(1);
+		ula.internalStore(0);
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		ula.read(1);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void subRegMem(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> intBus1
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A - Mem -> Mem
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(0);
+		ula.store(1);
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+		IR.internalStore();
+		PC.read();
+		memory.read();
+		memory.store();
+		IR.read();
+		memory.store();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void imulMemReg(){
+
+	}
+
+	public void imulRegMem(){
+
+	}
+
+	public void imulRegReg(){
+
+	}
+
+	public void moveMemReg(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Mem -> ula(0)
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//ula(0) -> Reg A
+		memory.read();
+		demux.put(extbus1.get());
+		ula.read(0);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void moveRegMem(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		memory.read();
+		demux.put(extbus1.get());
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> Mem
+		memory.read();
+		memory.store();
+		registersRead();
+		memory.store();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void moveRegReg(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> ula(0)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//ula(0) -> Reg B
+		memory.read();
+		demux.put(extbus1.get());
+		ula.read(0);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void moveImmReg(){
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(0);
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		memory.read();
+		demux.put(extbus1.get());
+		ula.read(0);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+	}
+
+	public void incReg(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Reg A -> ula(1)
+		memory.read();
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(1);
+
+		//ula++ -> Reg A
+		ula.inc();
+		ula.read(1);
+		registersInternalStore();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void incMem(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		memory.read();
+		memory.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		PC.read();
+		memory.read();
+		memory.store();
+		IR.read();
+		memory.store();
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+	}
+
+	public void jmp(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//Mem -> PC
+		memory.read();
+		PC.store();
+	}
+
+	public void jn(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		if (Flags.getBit(1)==1){
+			PC.read();
+			memory.read();
+			PC.store();
+		}
+		else{
+			//PC++
+			PC.read();
+			IR.store();
+			IR.internalRead();
+			ula.internalStore(1);
+			ula.inc();
+			ula.internalRead(1);
+			IR.internalStore();
+			IR.read();
+			PC.store();
+		}
+	}
+
+	public void jz(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		if (Flags.getBit(0)==1){
+			PC.read();
+			memory.read();
+			PC.store();
+		}
+		else{
+			//PC++
+			PC.read();
+			IR.store();
+			IR.internalRead();
+			ula.internalStore(1);
+			ula.inc();
+			ula.internalRead(1);
+			IR.internalStore();
+			IR.read();
+			PC.store();
+		}
+	}
+	
+	//possivelmente errado
+	public void jnz(){
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		if (!(Flags.getBit(0)==1)){
+			PC.read();
+			memory.read();
+			PC.store();
+		}
+		else{
+			//PC++
+			PC.read();
+			IR.store();
+			IR.internalRead();
+			ula.internalStore(1);
+			ula.inc();
+			ula.internalRead(1);
+			IR.internalStore();
+			IR.read();
+			PC.store();
+		}
+	}
+
+	public void jeq(){
+		//subtrai ambos os registradores e faz um jz, ou seja, A-B=0 = A=B
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPG A -> ula(0)
+		PC.read();
+		memory.read();
+		demux.put(extbus1.get());
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPG B -> ula(1)
+		PC.read();
+		memory.read();
+		registersInternalRead();
+		ula.store(1);
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+		
+		//ulaAdd -> RPGB
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+
+		jz();
+	}
+
+	public void jgt(){
+		//subtrai ambos os registradores e faz um jz, ou seja, A-B=0 = A=B
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPGA -> ula(0)
+		PC.read();
+		memory.read();
+		demux.put(extbus1.get());
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPGB -> ula(1)
+		PC.read();
+		memory.read();
+		registersInternalRead();
+		ula.store(1);
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+		
+		//ulaAdd -> RPGB
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+
+		jnz();
+	}
+
+	public void jlw(){
+		//subtrai ambos os registradores e faz um jz, ou seja, A-B=0 = A=B
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPGA -> ula(0)
+		PC.read();
+		memory.read();
+		demux.put(extbus1.get());
+
+		//PC++
+		PC.read();
+		IR.store();
+		IR.internalRead();
+		ula.internalStore(1);
+		ula.inc();
+		ula.internalRead(1);
+		IR.internalStore();
+		IR.read();
+		PC.store();
+
+		//RPGB -> ula(1)
+		PC.read();
+		memory.read();
+		registersInternalRead();
+		ula.store(1);
+		demux.put(extbus1.get());
+		registersInternalRead();
+		ula.store(0);
+		
+		//ulaAdd -> RPGB
+		ula.sub();
+		ula.internalRead(1);
+		setStatusFlags(intbus2.get());
+
+		jn();
+	}
+	
+
+
+	public ArrayList<Register> getRegistersList() {
+		return registersList;
+	}
+
+	/**
+	 * This method performs an (external) read from a register into the register list.
+	 * The register id must be in the demux bus
+	 */
+	private void registersRead() {
+		registersList.get(demux.get()).read();
+	}
+	
+	/**
+	 * This method performs an (internal) read from a register into the register list.
+	 * The register id must be in the demux bus
+	 */
+	private void registersInternalRead() {
+		registersList.get(demux.get()).internalRead();;
+	}
+	
+	/**
+	 * This method performs an (external) store toa register into the register list.
+	 * The register id must be in the demux bus
+	 */
+	private void registersStore() {
+		registersList.get(demux.get()).store();
+	}
+	
+	/**
+	 * This method performs an (internal) store toa register into the register list.
+	 * The register id must be in the demux bus
+	 */
+	private void registersInternalStore() {
+		registersList.get(demux.get()).internalStore();;
+	}
+
+
+
+	/**
+	 * This method reads an entire file in machine code and
+	 * stores it into the memory
+	 * NOT TESTED
+	 * @param filename
+	 * @throws IOException 
+	 */
+	public void readExec(String filename) throws IOException {
+		   BufferedReader br = new BufferedReader(new		 
+		   FileReader(filename+".dxf"));
+		   String linha;
+		   int i=0;
+		   while ((linha = br.readLine()) != null) {
+			     extbus1.put(i);
+			     memory.store();
+			   	 extbus1.put(Integer.parseInt(linha));
+			     memory.store();
+			     i++;
+			}
+			br.close();
+	}
+	
+	/**
+	 * This method executes a program that is stored in the memory
+	 */
+	public void controlUnitEexec() {
+		halt = false;
+		while (!halt) {
+			fetch();
+			decodeExecute();
+		}
+
+	}
+	
+
+	/**
+	 * This method implements The decode proccess,
+	 * that is to find the correct operation do be executed
+	 * according the command.
+	 * And the execute proccess, that is the execution itself of the command
+	 */
+	private void decodeExecute() {
+		IR.internalRead(); //the instruction is in the internalbus2
+		int command = intbus2.get();
+		simulationDecodeExecuteBefore(command);
+		switch (command) {
+		case 0:
+			addRegReg();
+			break;
+		case 1:
+			addMemReg();
+			break;
+		case 2:
+			addRegMem();
+			break;
+		case 3:
+			subRegReg();
+			break;
+		case 4:
+			subMemReg();
+			break;
+		case 5:
+			subRegMem();
+			break;
+		case 6:
+			imulMemReg();
+			break;
+		case 7:
+			imulRegMem();
+			break;
+		case 8:
+			imulRegReg();
+			break;
+			case 9:
+			moveMemReg();
+			break;
+			case 10:
+			moveRegMem();
+			break;
+			case 11:
+			moveRegReg();
+			break;
+			case 12:
+			moveImmReg();
+			break;
+			case 13:
+			incReg();
+			break;
+			case 14:
+			incMem();
+			break;
+			case 15:
+			jmp();
+			break;
+			case 16:
+			jn();
+			break;
+			case 17:
+			jz();
+			break;
+			case 18:
+			jnz();
+			break;
+			case 19:
+			jeq();
+			break;
+			case 20:
+			jgt();
+			break;
+			case 21:
+			jlw();
+			break;
+		default:
+			halt = true;
+			break;
+		}
+		if (simulation)
+			simulationDecodeExecuteAfter();
+	}
+
+	/**
+	 * This method is used to show the components status in simulation conditions
+	 * NOT TESTED
+	 * @param command 
+	 */
+	private void simulationDecodeExecuteBefore(int command) {
+		System.out.println("----------BEFORE Decode and Execute phases--------------");
+		String instruction;
+		int parameter = 0;
+		for (Register r:registersList) {
+			System.out.println(r.getRegisterName()+": "+r.getData());
+		}
+		if (command !=-1)
+			instruction = commandsList.get(command);
+		else
+			instruction = "END";
+		if (hasOperands(instruction)) {
+			parameter = memory.getDataList()[PC.getData()+1];
+			System.out.println("Instruction: "+instruction+" "+parameter);
+		}
+		else
+			System.out.println("Instruction: "+instruction);
+		if ("read".equals(instruction))
+			System.out.println("memory["+parameter+"]="+memory.getDataList()[parameter]);
+		
+	}
+
+	/**
+	 * This method is used to show the components status in simulation conditions
+	 * NOT TESTED 
+	 */
+	private void simulationDecodeExecuteAfter() {
+		String instruction;
+		System.out.println("-----------AFTER Decode and Execute phases--------------");
+		System.out.println("Internal Bus 1: "+intbus1.get());
+		System.out.println("Internal Bus 2: "+intbus2.get());
+		System.out.println("External Bus 1: "+extbus1.get());
+		for (Register r:registersList) {
+			System.out.println(r.getRegisterName()+": "+r.getData());
+		}
+		Scanner entrada = new Scanner(System.in);
+		System.out.println("Press <Enter>");
+		String mensagem = entrada.nextLine();
+	}
+
+	/**
+	 * This method uses PC to find, in the memory,
+	 * the command code that must be executed.
+	 * This command must be stored in IR
+	 * NOT TESTED!
+	 */
+	private void fetch() {
+		PC.read();
+		memory.read();
+		IR.store();
+		simulationFetch();
+	}
+
+	/**
+	 * This method is used to show the components status in simulation conditions
+	 * NOT TESTED!!!!!!!!!
+	 */
+	private void simulationFetch() {
+		if (simulation) {
+			System.out.println("-------Fetch Phase------");
+			System.out.println("PC: "+PC.getData());
+			System.out.println("IR: "+IR.getData());
+		}
+	}
+
+	/**
+	 * This method is used to show in a correct way the operands (if there is any) of instruction,
+	 * when in simulation mode
+	 * NOT TESTED!!!!!
+	 * @param instruction 
+	 * @return
+	 */
+	private boolean hasOperands(String instruction) {
+		if ("inc".equals(instruction)) //inc is the only one instruction having no operands
+			return false;
+		else
+			return true;
+	}
+
+	/**
+	 * This method returns the amount of positions allowed in the memory
+	 * of this architecture
+	 * NOT TESTED!!!!!!!
+	 * @return
+	 */
+	public int getMemorySize() {
+		return memorySize;
+	}
+	
+	public static void main(String[] args) throws IOException {
+		Architecture arch = new Architecture(true);
+		arch.readExec("program");
+		arch.controlUnitEexec();
+
+		
+	}
+	
+
+}
